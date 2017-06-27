@@ -5,8 +5,8 @@
 #include <RFM69_OTA.h>
 
 // ===NETWORK CONFIGURATION===
-String ssid = "ssid";
-String pass = "password";
+String ssid = "wifi_ssid";
+String pass = "wifi_pass";
 // ===========================
 
 // ===RFM69 CONFIGURATION===
@@ -25,7 +25,7 @@ String pass = "password";
 
 // ===Device Configuration===
 String name = "SmartHome";
-#define MAX_NODES 10 // (1-255)
+#define MAX_NODES 3 // (1-255)
 // =============================
 
 #define USEACK true
@@ -75,36 +75,61 @@ void loop () {
   if (ESP.available()) {
     if (ESP.find("+IPD,")) {
       String line = ESP.readStringUntil('\n');
+      String full = ESP.readString();
       Serial.println("Data: [" + line + "]");
-      if (line.indexOf("?d=") > 0) {
-        int idIndex = line.indexOf(',');
-        String id = line.substring(0, idIndex);
-        Serial.println("Data was sent from id:" + id);
-        // TODO: Reliable On and Off
-        sendCmd("AT+CIPSEND=" + id + ",2", 1000, true);
-        sendCmd("hi", 3000, true);
-        sendCmd("AT+CIPCLOSE=" + id, 2000, true);
-
-        if (ESP.find("favicon.ico")) {
-          Serial.println("Browser is asking for favicon... Closing connection.");
-          sendCmd("AT+CIPCLOSE=" + id, 4000, true);
-        }
-        int typeIndex0 = line.indexOf('=');
-        int typeIndex1 = line.indexOf('&');
-        String type = line.substring(typeIndex0 + 1, typeIndex1);
-        Serial.println("Type: [" + type + "]");
+      if (line.indexOf("POST") > 0) {
         char data[2] = { 's', '\r' };
-        int nodeIndex = line.indexOf('=', typeIndex1 + 1);
-        String node = line.substring(nodeIndex + 1, line.indexOf('H') - 1);
-        Serial.println("Node: [" + node + "]");
+        int idIndex = full.indexOf("id=");
+        String node = full.substring(idIndex + 3);
+        Serial.println("ID: [" + node + "]");
         sendToNode(node.toInt(), data, sizeof(data));
-      }/* else {
-        int idIndex = line.indexOf(',');
-        String id = line.substring(0, idIndex);
-        Serial.println("Data needs to be sent id:" + id);
-
-        sendPage(id);
-      }*/
+      }
+      int idIndex = line.indexOf(',');
+      String id = line.substring(0, idIndex);
+      Serial.println("Data needs to be sent id:" + id);
+      
+      Serial.println("Sending Page...");
+      //sendCmd("AT+CIPSEND=" + id + ",34", 1000, true);
+      //sendCmd("<!DOCTYPE html><html><head><title>", 3000, true);
+      //sendCmd("AT+CIPSEND=" + id + "," + name.length(), 1000, true);
+      //sendCmd(name, 3000, true);
+      //sendCmd("AT+CIPSEND=" + id + ",21", 1000, true);
+      //sendCmd("</title></head><body>", 3000, true);
+    
+      int nodeSize = sizeof(nodeList) / sizeof(nodeList[0]);
+      Serial.println("Size of Node List: [" + String(nodeSize) + "]");
+      sendCmd("AT+CIPSEND=" + id + "," + (name.length() + 9), 1000, true);
+      sendCmd("<h1>" + name + "</h1>", 3000, true);
+      for (int i = 0; i < nodeSize; i++) {
+        if (nodeList[i].node != 0) {
+          //Serial.println("Node ID isn't 0");
+          String nodeName(nodeList[i].name);
+          String nodeId(nodeList[i].node);
+          //String button = "<form method=\"post\">" + nodeName + " <input type=\"hidden\" name=\"id\" value=\"" + String(nodeList[i].node) + "\"><input type=\"submit\" value=\"Toggle\"></form><br>";
+          //Serial.println("Sending button for node [" + String(nodeList[i].node) + "] with name [" + name + "]");
+          sendCmd("AT+CIPSEND=" + id + ",20", 2000, true);
+          sendCmd("<form method=\"post\">", 1000, true);
+          sendCmd("AT+CIPSEND=" + id + "," + nodeName.length(), 2000, true);
+          sendCmd(nodeName, 1000, true);
+          sendCmd("AT+CIPSEND=" + id + ",39", 2000, true);
+          sendCmd(" <input type=\"hidden\" name=\"id\" value=\"", 1000, true);
+          sendCmd("AT+CIPSEND=" + id + "," + nodeId.length(), 2000, true);
+          sendCmd(nodeId, 1000, true);
+          sendCmd("AT+CIPSEND=" + id + ",49", 2000, true);
+          sendCmd("\"><input type=\"submit\" value=\"Toggle\"></form><br>", 1000, true);
+        }
+      }
+    
+      //sendCmd("AT+CIPSEND=" + id + ",14", 1000, true);
+      //sendCmd("</body></html>", 3000, true);
+      sendCmd("AT+CIPCLOSE=" + id, 1000, true);
+    
+      if (ESP.find("favicon.ico")) {
+        Serial.println("Browser is asking for favicon... Closing connection.");
+        sendCmd("AT+CIPCLOSE=" + id, 1000, true);
+      }
+    
+      Serial.println("Page sent!");
     }
   }
 
@@ -150,38 +175,5 @@ String sendToNode (uint8_t id, const void* buffer, uint8_t len) {
     radio.send(id, buffer, len);
     Serial.println("Sent data to node");
   }
-}
-
-void sendPage (String id) {
-  sendCmd("AT+CIPSEND=" + id + ",34", 1000, true);
-  sendCmd("<!DOCTYPE html><html><head><title>", 3000, true);
-  sendCmd("AT+CIPSEND=" + id + "," + name.length(), 1000, true);
-  sendCmd(name, 3000, true);
-  sendCmd("AT+CIPSEND=" + id + ",21", 1000, true);
-  sendCmd("</title></head><body>", 3000, true);
-
-  // TODO: Implement
-  Serial.println("Size of Node List: [" + String((sizeof(nodeList) / sizeof(nodeList[0]))) + "]");
-  for (int i = 0; i < (sizeof(nodeList) / sizeof(nodeList[0])); i++) {
-    if (nodeList[i].node != 0) {
-      Serial.println("Node ID isn't 0");
-      String name(nodeList[i].name);
-      String button = "<a href=\"?d=1&n=" + String(nodeList[i].node) + "\">" + name + "</a>";
-      Serial.println("Sending button for node [" + String(nodeList[i].node) + "] with name [" + name + "]");
-      sendCmd("AT+CIPSEND=" + id + "," + button.length(), 1000, true);
-      sendCmd(button, 3000, true);
-    }
-  }
-
-  sendCmd("AT+CIPSEND=" + id + ",14", 1000, true);
-  sendCmd("</body></html>", 3000, true);
-  sendCmd("AT+CIPCLOSE=" + id, 4000, true);
-
-  if (ESP.find("favicon.ico")) {
-    Serial.println("Browser is asking for favicon... Closing connection.");
-    sendCmd("AT+CIPCLOSE=" + id, 4000, true);
-  }
-
-  Serial.println("Page sent!");
 }
 
